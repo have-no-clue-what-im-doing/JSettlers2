@@ -1,0 +1,91 @@
+diff --git a/src/main/java/soc/game/SOCBoard.java b/src/main/java/soc/game/SOCBoard.java
+index d997b65..3c5d6b0 100644
+--- a/src/main/java/soc/game/SOCBoard.java
++++ b/src/main/java/soc/game/SOCBoard.java
+@@ -224,6 +224,14 @@ public abstract class SOCBoard implements Serializable, Cloneable
+      */
+     public static final int DESERT_HEX = 6;
+ 
++    /**
++     * Java system property to load a fixed/custom classic (4-player) board layout from
++     * a template file, instead of the normal random shuffle. See {@link SOCBoardTemplate}
++     * for the file format. Example: {@code -Djsettlers.board.template=/path/to/board.txt}
++     * @since custom
++     */
++    public static final String PROP_JSETTLERS_BOARD_TEMPLATE = "jsettlers.board.template";
++
+     /**
+      * Highest-numbered land hex type ({@link #DESERT_HEX}).
+      *<P>
+@@ -882,11 +890,25 @@ public abstract class SOCBoard implements Serializable, Cloneable
+         // sets robberHex, contents of hexLayout[] and numberLayout[].
+         // Also checks vs game option BC: Break up clumps of # or more same-type hexes/ports
+         {
+-            final int[] landHex = is6player ? SOCBoard6p.makeNewBoard_landHexTypes_v2 : SOCBoard4p.makeNewBoard_landHexTypes_v1;
+-            final int[][] numPaths = is6player ? SOCBoard6p.makeNewBoard_numPaths_v2 : SOCBoard4p.makeNewBoard_numPaths_v1;
+-            final int[] numPath = numPaths[ Math.abs(rand.nextInt() % numPaths.length) ];
+-            final int[] numbers = is6player ? SOCBoard6p.makeNewBoard_diceNums_v2 : SOCBoard4p.makeNewBoard_diceNums_v1;
+-            makeNewBoard_placeHexes(landHex, numPath, numbers, opt_breakClumps);
++            final String templatePath = System.getProperty(PROP_JSETTLERS_BOARD_TEMPLATE);
++            if ((templatePath != null) && ! is6player)
++            {
++                // Fixed/custom board layout loaded from a template file: no shuffling,
++                // no random numPath choice, so every game using this template is identical.
++                final int[] numPath = SOCBoard4p.makeNewBoard_numPaths_v1[0];
++                final int[][] loaded = SOCBoardTemplate.load(templatePath, numPath.length);
++                final int[] landHex = loaded[0];
++                final int[] numbers = loaded[1];
++                makeNewBoard_placeHexes_fixed(landHex, numPath, numbers);
++            }
++            else
++            {
++                final int[] landHex = is6player ? SOCBoard6p.makeNewBoard_landHexTypes_v2 : SOCBoard4p.makeNewBoard_landHexTypes_v1;
++                final int[][] numPaths = is6player ? SOCBoard6p.makeNewBoard_numPaths_v2 : SOCBoard4p.makeNewBoard_numPaths_v1;
++                final int[] numPath = numPaths[ Math.abs(rand.nextInt() % numPaths.length) ];
++                final int[] numbers = is6player ? SOCBoard6p.makeNewBoard_diceNums_v2 : SOCBoard4p.makeNewBoard_diceNums_v1;
++                makeNewBoard_placeHexes(landHex, numPath, numbers, opt_breakClumps);
++            }
+         }
+ 
+         // copy and shuffle the ports, and check vs game option BC
+@@ -1001,6 +1023,40 @@ public abstract class SOCBoard implements Serializable, Cloneable
+ 
+     }  // makeNewBoard_placeHexes
+ 
++    /**
++     * Like {@link #makeNewBoard_placeHexes(int[], int[], int[], SOCGameOption)}, but places
++     * {@code landHex[]} in the exact order given, with no shuffling. Used for a fixed/custom
++     * board loaded from a template file via {@link #PROP_JSETTLERS_BOARD_TEMPLATE}, so that
++     * every game using the same template gets an identical board.
++     *
++     * @param landHex  Resource type to place into {@link #hexLayout} for each land hex, in order;
++     *                    will NOT be shuffled.
++     * @param numPath  Indexes within {@link #hexLayout} (also within {@link #numberLayout}) for each land hex;
++     *                    same array length as <tt>landHex[]</tt>
++     * @param number   Numbers to place into {@link #numberLayout} for each non-desert land hex, in order.
++     * @since custom
++     */
++    private void makeNewBoard_placeHexes_fixed
++        (final int[] landHex, final int[] numPath, final int[] number)
++    {
++        int cnt = 0;
++        for (int i = 0; i < landHex.length; i++)
++        {
++            hexLayout[numPath[i]] = landHex[i];
++
++            if (landHex[i] == DESERT_HEX)
++            {
++                robberHex = numToHexID[numPath[i]];
++                numberLayout[numPath[i]] = -1;
++            }
++            else
++            {
++                numberLayout[numPath[i]] = number[cnt];
++                cnt++;
++            }
++        }
++    }
++
+     /**
+      * Depth-first search to check land hexes for resource clumps.
+      *<P>
